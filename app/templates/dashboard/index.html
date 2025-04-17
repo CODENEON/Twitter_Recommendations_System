@@ -1,0 +1,364 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h1 class="display-5">Welcome, {{ current_user.username }}!</h1>
+        <p class="lead">
+            Here's what's happening in your Twitter Analytics Dashboard.
+        </p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{ url_for('tweet.create') }}" class="btn btn-primary btn-lg">
+            <i class="fas fa-feather-alt"></i> New Tweet
+        </a>
+    </div>
+</div>
+
+<!-- Main Dashboard Content -->
+<div class="row">
+    <!-- Left Column -->
+    <div class="col-md-8">
+        <!-- Tweet Box -->
+        <div class="card mb-4 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-feather-alt"></i> Quick Tweet</h4>
+            </div>
+            <div class="card-body">
+                <form id="quick-tweet-form">
+                    <div class="mb-3">
+                        <textarea id="tweet-content" class="form-control" rows="3" 
+                                  placeholder="What's happening?" maxlength="280" required></textarea>
+                        <div class="text-end mt-2">
+                            <small id="char-count" class="text-muted">280 characters remaining</small>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i> Tweet
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- User's Recent Tweets -->
+        <div class="card mb-4 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-history"></i> Your Recent Tweets</h4>
+            </div>
+            <div class="card-body" id="recent-tweets-container">
+                {% if recent_tweets %}
+                    {% for tweet in recent_tweets %}
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <h5 class="card-title">
+                                        <a href="{{ url_for('user.profile', username=current_user.username) }}" class="text-decoration-none">
+                                            {{ current_user.username }}
+                                        </a>
+                                    </h5>
+                                    <small class="text-muted">{{ tweet.timestamp.strftime('%B %d, %Y, %H:%M') }}</small>
+                                </div>
+                                <p class="card-text">{{ tweet.text }}</p>
+                                {% if tweet.hashtags.count() > 0 %}
+                                    <div class="mb-2">
+                                        {% for hashtag in tweet.hashtags %}
+                                            <a href="{{ url_for('tweet.hashtag', tag_text=hashtag.text) }}" class="badge bg-primary text-decoration-none me-1">
+                                                #{{ hashtag.text }}
+                                            </a>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="badge {% if tweet.sentiment_label == 'positive' %}bg-success{% elif tweet.sentiment_label == 'negative' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                            {{ tweet.sentiment_label|capitalize }}
+                                        </span>
+                                    </div>
+                                    <form action="{{ url_for('tweet.delete', tweet_id=tweet.id) }}" method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                                onclick="return confirm('Are you sure you want to delete this tweet?')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center p-4">
+                        <p class="text-muted">You haven't posted any tweets yet.</p>
+                        <a href="{{ url_for('tweet.create') }}" class="btn btn-primary">
+                            <i class="fas fa-feather-alt"></i> Create Your First Tweet
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Tweets from Followed Users -->
+        <div class="card mb-4 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-users"></i> From People You Follow</h4>
+            </div>
+            <div class="card-body">
+                {% if followed_tweets %}
+                    {% for tweet in followed_tweets %}
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <h5 class="card-title">
+                                        <a href="{{ url_for('user.profile', username=tweet.author.username) }}" class="text-decoration-none">
+                                            {{ tweet.author.username }}
+                                        </a>
+                                    </h5>
+                                    <small class="text-muted">{{ tweet.timestamp.strftime('%B %d, %Y, %H:%M') }}</small>
+                                </div>
+                                <p class="card-text">{{ tweet.text }}</p>
+                                {% if tweet.hashtags.count() > 0 %}
+                                    <div class="mb-2">
+                                        {% for hashtag in tweet.hashtags %}
+                                            <a href="{{ url_for('tweet.hashtag', tag_text=hashtag.text) }}" class="badge bg-primary text-decoration-none me-1">
+                                                #{{ hashtag.text }}
+                                            </a>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                                <div>
+                                    <span class="badge {% if tweet.sentiment_label == 'positive' %}bg-success{% elif tweet.sentiment_label == 'negative' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                        {{ tweet.sentiment_label|capitalize }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center p-4">
+                        <p class="text-muted">No tweets from people you follow yet.</p>
+                        <p class="text-muted">Follow more users to see their tweets here.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Sidebar -->
+    <div class="col-md-4">
+        <!-- Sentiment Analysis -->
+        <div class="card mb-4 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-chart-pie"></i> Your Tweet Sentiment</h4>
+            </div>
+            <div class="card-body">
+                {% if sentiment_stats.total_count > 0 %}
+                    <div class="text-center mb-3">
+                        <canvas id="sentimentChart" width="100%" height="100%"></canvas>
+                    </div>
+                    <div class="list-group">
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-smile text-success"></i> Positive</span>
+                            <span class="badge bg-success rounded-pill">{{ sentiment_stats.positive_count }} ({{ sentiment_stats.positive_percent }}%)</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-meh text-secondary"></i> Neutral</span>
+                            <span class="badge bg-secondary rounded-pill">{{ sentiment_stats.neutral_count }} ({{ sentiment_stats.neutral_percent }}%)</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-frown text-danger"></i> Negative</span>
+                            <span class="badge bg-danger rounded-pill">{{ sentiment_stats.negative_count }} ({{ sentiment_stats.negative_percent }}%)</span>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="text-center p-4">
+                        <p class="text-muted">No sentiment data available yet.</p>
+                        <p class="text-muted">Post tweets to see your sentiment analysis.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Trending Hashtags -->
+        <div class="card mb-4 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-fire"></i> Trending Hashtags</h4>
+            </div>
+            <div class="card-body">
+                {% if trending_hashtags %}
+                    <div class="list-group">
+                        {% for hashtag in trending_hashtags %}
+                            <a href="{{ url_for('tweet.hashtag', tag_text=hashtag.text) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                #{{ hashtag.text }}
+                                <span class="badge bg-primary rounded-pill">{{ hashtag.tweets.count() }}</span>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center p-4">
+                        <p class="text-muted">No trending hashtags available yet.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Recommended Users to Follow -->
+        <div class="card mb-4 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-user-plus"></i> Who to Follow</h4>
+            </div>
+            <div class="card-body">
+                {% if recommended_users %}
+                    <div class="list-group">
+                        {% for user in recommended_users %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <a href="{{ url_for('user.profile', username=user.username) }}" class="text-decoration-none">
+                                        <h6 class="mb-1">{{ user.username }}</h6>
+                                    </a>
+                                    <a href="{{ url_for('user.follow', username=user.username) }}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-user-plus"></i> Follow
+                                    </a>
+                                </div>
+                                {% if user.bio %}
+                                    <small class="text-muted">{{ user.bio[:50] }}{% if user.bio|length > 50 %}...{% endif %}</small>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center p-4">
+                        <p class="text-muted">No user recommendations available yet.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Recommended Tweets -->
+        <div class="card mb-4 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-thumbs-up"></i> Recommended Tweets</h4>
+            </div>
+            <div class="card-body">
+                {% if recommended_tweets %}
+                    {% for tweet in recommended_tweets %}
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <h6 class="card-subtitle">
+                                        <a href="{{ url_for('user.profile', username=tweet.author.username) }}" class="text-decoration-none">
+                                            {{ tweet.author.username }}
+                                        </a>
+                                    </h6>
+                                    <small class="text-muted">{{ tweet.timestamp.strftime('%B %d, %Y') }}</small>
+                                </div>
+                                <p class="card-text small">{{ tweet.text }}</p>
+                                {% if tweet.hashtags.count() > 0 %}
+                                    <div>
+                                        {% for hashtag in tweet.hashtags %}
+                                            <a href="{{ url_for('tweet.hashtag', tag_text=hashtag.text) }}" class="badge bg-primary text-decoration-none me-1">
+                                                #{{ hashtag.text }}
+                                            </a>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center p-4">
+                        <p class="text-muted">No tweet recommendations available yet.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Initialize sentiment chart if data exists
+{% if sentiment_stats.total_count > 0 %}
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('sentimentChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: {{ sentiment_stats.chart_data.labels|tojson }},
+            datasets: [{
+                data: {{ sentiment_stats.chart_data.datasets[0].data|tojson }},
+                backgroundColor: {{ sentiment_stats.chart_data.datasets[0].backgroundColor|tojson }},
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                }
+            }
+        }
+    });
+});
+{% endif %}
+
+// Quick tweet functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const tweetForm = document.getElementById('quick-tweet-form');
+    const tweetContent = document.getElementById('tweet-content');
+    const charCount = document.getElementById('char-count');
+    const maxLength = 280;
+    
+    // Update character count
+    tweetContent.addEventListener('input', function() {
+        const remaining = maxLength - this.value.length;
+        charCount.textContent = `${remaining} characters remaining`;
+        
+        if (remaining < 20) {
+            charCount.className = 'text-danger';
+        } else {
+            charCount.className = 'text-muted';
+        }
+    });
+    
+    // Handle form submission via AJAX
+    tweetForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const content = tweetContent.value.trim();
+        if (!content) {
+            return;
+        }
+        
+        // Send AJAX request
+        fetch('{{ url_for("tweet.api_create_tweet") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ content: content })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                // Clear the form
+                tweetContent.value = '';
+                charCount.textContent = `${maxLength} characters remaining`;
+                charCount.className = 'text-muted';
+                
+                // Optionally refresh the page or update the tweets section
+                window.location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while posting your tweet.');
+        });
+    });
+});
+</script>
+{% endblock %}

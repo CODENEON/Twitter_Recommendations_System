@@ -1,0 +1,127 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">
+                    <i class="fas fa-feather-alt"></i> Create a New Tweet
+                </h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.content.label(class="form-label") }}
+                        {{ form.content(class="form-control", rows=4, id="tweet-content") }}
+                        <div class="text-end mt-2">
+                            <small id="char-count" class="text-muted">280 characters remaining</small>
+                        </div>
+                        {% for error in form.content.errors %}
+                            <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-text">
+                            <i class="fas fa-hashtag"></i> Add hashtags by including them in your tweet (e.g., #twitter #analytics)
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2">
+                        {{ form.submit(class="btn btn-primary btn-lg") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Hashtag Tips -->
+        <div class="card mt-4 shadow">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0"><i class="fas fa-lightbulb"></i> Tips for Effective Tweets</h4>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">
+                        <i class="fas fa-hashtag text-primary"></i> 
+                        <strong>Use relevant hashtags</strong> - They help categorize your tweets and make them discoverable
+                    </li>
+                    <li class="list-group-item">
+                        <i class="fas fa-bullseye text-primary"></i> 
+                        <strong>Be concise</strong> - Short, clear messages have higher engagement
+                    </li>
+                    <li class="list-group-item">
+                        <i class="fas fa-question text-primary"></i> 
+                        <strong>Ask questions</strong> - Encourage interactions from your followers
+                    </li>
+                    <li class="list-group-item">
+                        <i class="fas fa-retweet text-primary"></i> 
+                        <strong>Be engaging</strong> - Content that resonates emotionally gets shared more often
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Trending Hashtags for Reference -->
+        <div class="card mt-4 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-fire"></i> Currently Trending Hashtags</h4>
+            </div>
+            <div class="card-body">
+                <div id="trending-hashtags-container">
+                    <!-- This will be loaded via AJAX -->
+                    <p class="text-center"><i class="fas fa-spinner fa-pulse"></i> Loading trending hashtags...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tweetContent = document.getElementById('tweet-content');
+    const charCount = document.getElementById('char-count');
+    const maxLength = 280;
+    
+    // Update character count
+    tweetContent.addEventListener('input', function() {
+        const remaining = maxLength - this.value.length;
+        charCount.textContent = `${remaining} characters remaining`;
+        
+        if (remaining < 20) {
+            charCount.className = 'text-danger';
+        } else {
+            charCount.className = 'text-muted';
+        }
+    });
+    
+    // Load trending hashtags
+    fetch('/api/trending_hashtags')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            const container = document.getElementById('trending-hashtags-container');
+            if (data.length > 0) {
+                let html = '<div class="d-flex flex-wrap">';
+                data.forEach(hashtag => {
+                    html += `<a href="/hashtag/${hashtag.text}" class="badge bg-primary me-2 mb-2 p-2 text-decoration-none">#${hashtag.text}</a>`;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<p class="text-center text-muted">No trending hashtags available</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching trending hashtags:', error);
+            const container = document.getElementById('trending-hashtags-container');
+            container.innerHTML = '<p class="text-center text-danger">Failed to load trending hashtags</p>';
+        });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,191 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row">
+    <!-- User Profile Card -->
+    <div class="col-md-4">
+        
+<div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">
+                    <i class="fas fa-user"></i> {{ user.username }}'s Profile
+                </h3>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <img src="https://ui-avatars.com/api/?name={{ user.username }}&background=random&size=128" 
+                         class="rounded-circle img-thumbnail" alt="{{ user.username }}">
+                </div>
+                
+                <h4 class="text-center mb-3">{{ user.username }}</h4>
+                
+                {% if user.bio %}
+                    <p class="text-center mb-4">{{ user.bio }}</p>
+                {% else %}
+                    <p class="text-center text-muted mb-4">No bio provided</p>
+                {% endif %}
+                
+                <div class="d-flex justify-content-around text-center mb-4">
+                    <div>
+                        <h5>{{ followers_count }}</h5>
+                        <a href="{{ url_for('user.followers', username=user.username) }}" class="text-decoration-none">
+                            Followers
+                        </a>
+                    </div>
+                    <div>
+                        <h5>{{ following_count }}</h5>
+                        <a href="{{ url_for('user.following', username=user.username) }}" class="text-decoration-none">
+                            Following
+                        </a>
+                    </div>
+                    <div>
+                        <h5>{{ tweets|length }}</h5>
+                        <span>Tweets</span>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    {% if user != current_user %}
+                        {% if is_following %}
+                            <a href="{{ url_for('user.unfollow', username=user.username) }}" class="btn btn-outline-danger">
+                                <i class="fas fa-user-minus"></i> Unfollow
+                            </a>
+                        {% else %}
+                            <a href="{{ url_for('user.follow', username=user.username) }}" class="btn btn-primary">
+                                <i class="fas fa-user-plus"></i> Follow
+                            </a>
+                        {% endif %}
+                    {% else %}
+                        <a href="{{ url_for('user.edit_profile') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-user-edit"></i> Edit Profile
+                        </a>
+                    {% endif %}
+                </div>
+                
+                <div class="mt-4">
+                    <p class="text-muted text-center">
+                        <i class="fas fa-calendar-alt"></i> Member since: {{ user.member_since.strftime('%B %d, %Y') }}
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sentiment Analysis -->
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-chart-pie"></i> Tweet Sentiment</h4>
+            </div>
+            <div class="card-body">
+                {% if sentiment_stats.total_count > 0 %}
+                    <div class="text-center mb-3">
+                        <canvas id="sentimentChart" width="100%" height="100%"></canvas>
+                    </div>
+                    <div class="list-group">
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-smile text-success"></i> Positive</span>
+                            <span class="badge bg-success rounded-pill">{{ sentiment_stats.positive_count }} ({{ sentiment_stats.positive_percent }}%)</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-meh text-secondary"></i> Neutral</span>
+                            <span class="badge bg-secondary rounded-pill">{{ sentiment_stats.neutral_count }} ({{ sentiment_stats.neutral_percent }}%)</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-frown text-danger"></i> Negative</span>
+                            <span class="badge bg-danger rounded-pill">{{ sentiment_stats.negative_count }} ({{ sentiment_stats.negative_percent }}%)</span>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="text-center p-4">
+                        <p class="text-muted">No sentiment data available.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- User Tweets -->
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-feather-alt"></i> {{ user.username }}'s Tweets</h4>
+            </div>
+            <div class="card-body">
+                {% if tweets %}
+                    {% for tweet in tweets %}
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <h5 class="card-title">
+                                        <a href="{{ url_for('user.profile', username=user.username) }}" class="text-decoration-none">
+                                            {{ user.username }}
+                                        </a>
+                                    </h5>
+                                    <small class="text-muted">{{ tweet.timestamp.strftime('%B %d, %Y, %H:%M') }}</small>
+                                </div>
+                                <p class="card-text">{{ tweet.text }}</p>
+                                {% if tweet.hashtags.count() > 0 %}
+                                    <div class="mb-2">
+                                        {% for hashtag in tweet.hashtags %}
+                                            <a href="{{ url_for('tweet.hashtag', tag_text=hashtag.text) }}" class="badge bg-primary text-decoration-none me-1">
+                                                #{{ hashtag.text }}
+                                            </a>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="badge {% if tweet.sentiment_label == 'positive' %}bg-success{% elif tweet.sentiment_label == 'negative' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                        {{ tweet.sentiment_label|capitalize }}
+                                    </span>
+                                    
+                                    {% if user == current_user %}
+                                        <form action="{{ url_for('tweet.delete', tweet_id=tweet.id) }}" method="POST" class="d-inline">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                                    onclick="return confirm('Are you sure you want to delete this tweet?')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center p-4">
+                        <p class="text-muted">{{ user.username }} hasn't posted any tweets yet.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Initialize sentiment chart if data exists
+{% if sentiment_stats.total_count > 0 %}
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('sentimentChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: {{ sentiment_stats.chart_data.labels|tojson }},
+            datasets: [{
+                data: {{ sentiment_stats.chart_data.datasets[0].data|tojson }},
+                backgroundColor: {{ sentiment_stats.chart_data.datasets[0].backgroundColor|tojson }},
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                }
+            }
+        }
+    });
+});
+{% endif %}
+</script>
+{% endblock %}

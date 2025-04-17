@@ -1,0 +1,62 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">
+                    <i class="fas fa-users"></i> People Following {{ user.username }}
+                </h3>
+            </div>
+            <div class="card-body">
+                {% if followers %}
+                    <div class="list-group">
+                        {% for follower in followers %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <img src="https://ui-avatars.com/api/?name={{ follower.username }}&background=random&size=48" 
+                                             class="rounded-circle me-3" alt="{{ follower.username }}">
+                                        <div>
+                                            <h5 class="mb-1">
+                                                <a href="{{ url_for('user.profile', username=follower.username) }}" class="text-decoration-none">
+                                                    {{ follower.username }}
+                                                </a>
+                                            </h5>
+                                            {% if follower.bio %}
+                                                <small class="text-muted">{{ follower.bio[:80] }}{% if follower.bio|length > 80 %}...{% endif %}</small>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    
+                                    {% if follower != current_user %}
+                                        {% if current_user.is_following(follower) %}
+                                            <a href="{{ url_for('user.unfollow', username=follower.username) }}" class="btn btn-sm btn-outline-danger">
+                                                <i class="fas fa-user-minus"></i> Unfollow
+                                            </a>
+                                        {% else %}
+                                            <a href="{{ url_for('user.follow', username=follower.username) }}" class="btn btn-sm btn-primary">
+                                                <i class="fas fa-user-plus"></i> Follow
+                                            </a>
+                                        {% endif %}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center p-4">
+                        <p class="text-muted">{{ user.username }} doesn't have any followers yet.</p>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <a href="{{ url_for('user.profile', username=user.username) }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Profile
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

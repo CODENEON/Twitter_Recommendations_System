@@ -1,0 +1,58 @@
+{
+    "method": "kmeans",
+    "n_clusters": 2,
+    "quality_metric": "Silhouette Score: 0.270",
+    "visualization_path": "app/static/img/clusters/user_clusters_kmeans_20250418_003309.png",
+    "user_count": 3,
+    "timestamp": "20250418_003309",
+    "cluster_analysis": {
+        "0": {
+            "size": 2,
+            "usernames": [
+                "somesh",
+                "ratnesh"
+            ],
+            "avg_sentiment": 0.8,
+            "top_keywords": [
+                "csk",
+                "dhoni",
+                "finishes",
+                "mahi",
+                "style",
+                "thala",
+                "way",
+                "win",
+                "yellove"
+            ],
+            "top_hashtags": [
+                "csk",
+                "win",
+                "thala",
+                "yellove"
+            ],
+            "user_ids": [
+                2,
+                3
+            ]
+        },
+        "1": {
+            "size": 1,
+            "usernames": [
+                "ab77744"
+            ],
+            "avg_sentiment": 1.0,
+            "top_keywords": [
+                "awesome",
+                "csk",
+                "lsg",
+                "match",
+                "today",
+                "vs"
+            ],
+            "top_hashtags": [],
+            "user_ids": [
+                1
+            ]
+        }
+    }
+}
