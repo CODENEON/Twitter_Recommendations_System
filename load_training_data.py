@@ -43,7 +43,6 @@ def load_training_data():
                 # Use csv reader to handle quoted fields properly
                 reader = csv.reader(file)
                 
-                # Skip header if exists
                 next(reader, None)
                 
                 for row in reader:
