@@ -10,7 +10,7 @@
                 </h3>
             </div>
             <div class="card-body">
-                <form method="POST" action="">
+                <form method="POST" action="" id="tweet-form">
                     {{ form.hidden_tag() }}
                     <div class="mb-3">
                         {{ form.content.label(class="form-label") }}
@@ -28,7 +28,7 @@
                         </div>
                     </div>
                     <div class="d-grid gap-2">
-                        {{ form.submit(class="btn btn-primary btn-lg") }}
+                        {{ form.submit(class="btn btn-primary btn-lg", id="tweet-submit") }}
                     </div>
                 </form>
             </div>
@@ -83,6 +83,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const tweetContent = document.getElementById('tweet-content');
     const charCount = document.getElementById('char-count');
     const maxLength = 280;
+    const tweetForm = document.getElementById('tweet-form');
+    const tweetSubmit = document.getElementById('tweet-submit');
     
     // Update character count
     tweetContent.addEventListener('input', function() {
@@ -94,6 +96,13 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             charCount.className = 'text-muted';
         }
+    });
+    
+    // Handle form submission
+    tweetForm.addEventListener('submit', function(e) {
+        // Only disable the button, don't prevent default
+        tweetSubmit.disabled = true;
+        // Let the form submit normally
     });
     
     // Load trending hashtags

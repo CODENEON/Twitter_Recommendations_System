@@ -350,8 +350,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 charCount.textContent = `${maxLength} characters remaining`;
                 charCount.className = 'text-muted';
                 
-                // Optionally refresh the page or update the tweets section
-                window.location.reload();
+                // Create new tweet element and prepend it to the container
+                const tweetHtml = `
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <h5 class="card-title">
+                                    <a href="{{ url_for('user.profile', username=current_user.username) }}" class="text-decoration-none">
+                                        {{ current_user.username }}
+                                    </a>
+                                </h5>
+                                <small class="text-muted">Just now</small>
+                            </div>
+                            <p class="card-text">${data.text}</p>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="badge ${data.sentiment === 'positive' ? 'bg-success' : data.sentiment === 'negative' ? 'bg-danger' : 'bg-secondary'}">
+                                        ${data.sentiment.charAt(0).toUpperCase() + data.sentiment.slice(1)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                const container = document.getElementById('recent-tweets-container');
+                container.insertAdjacentHTML('afterbegin', tweetHtml);
+                
+                // Show success message
+                alert('Tweet posted successfully!');
             }
         })
         .catch(error => {

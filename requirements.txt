@@ -17,3 +17,9 @@ matplotlib==3.8.0
 numpy==1.26.0
 bcrypt==4.0.1
 gunicorn==21.2.0
+wordcloud
+seaborn
+dask[complete]==2023.12.1
+distributed==2023.12.1
+neo4j==5.14.1
+py2neo==2021.2.4

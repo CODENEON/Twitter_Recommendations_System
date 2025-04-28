@@ -72,6 +72,30 @@ def delete(tweet_id):
     flash('Your tweet has been deleted!', 'success')
     return redirect(url_for('dashboard.index'))
 
+def get_related_hashtags(hashtag_text, limit=5):
+    """Get related hashtags based on co-occurrence in tweets."""
+    # Get all tweets that contain the given hashtag
+    hashtag = Hashtag.query.filter_by(text=hashtag_text.lower()).first()
+    if not hashtag:
+        return []
+    
+    # Get all other hashtags that appear in the same tweets
+    related_hashtags = db.session.query(
+        Hashtag.text,
+        db.func.count(Hashtag.id).label('count')
+    ).join(
+        Hashtag.tweets
+    ).filter(
+        Hashtag.id != hashtag.id,
+        Hashtag.tweets.any(Tweet.id.in_([t.id for t in hashtag.tweets]))
+    ).group_by(
+        Hashtag.id
+    ).order_by(
+        db.desc('count')
+    ).limit(limit).all()
+    
+    return [{'text': tag, 'count': count} for tag, count in related_hashtags]
+
 @tweet.route('/hashtag/<tag_text>')
 @login_required
 def hashtag(tag_text):
@@ -81,10 +105,14 @@ def hashtag(tag_text):
     # Get all tweets with this hashtag
     tweets = hashtag.tweets.order_by(Tweet.timestamp.desc()).all()
     
+    # Get related hashtags
+    related_hashtags = get_related_hashtags(tag_text)
+    
     return render_template('tweets/hashtag.html', 
                           title=f'#{tag_text}',
                           hashtag=hashtag,
-                          tweets=tweets)
+                          tweets=tweets,
+                          related_hashtags=related_hashtags)
 
 # Utility function to extract hashtags from tweet text
 def extract_hashtags(text):
@@ -147,3 +175,10 @@ def api_create_tweet():
         'sentiment': new_tweet.sentiment_label,
         'author': current_user.username
     }), 201
+
+@tweet.route('/api/related_hashtags/<tag_text>')
+@login_required
+def api_related_hashtags(tag_text):
+    """API endpoint for getting related hashtags."""
+    related_hashtags = get_related_hashtags(tag_text)
+    return jsonify(related_hashtags)
