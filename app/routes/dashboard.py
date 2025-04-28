@@ -11,6 +11,9 @@ dashboard = Blueprint('dashboard', __name__)
 @dashboard.route('/dashboard')
 @login_required
 def index():
+    # Get total tweet count
+    total_tweets = Tweet.query.count()
+    
     # Get user's recent tweets
     recent_tweets = current_user.get_recent_tweets(
         limit=current_app.config['TWEETS_PER_PAGE']
@@ -43,6 +46,7 @@ def index():
     
     return render_template('dashboard/index.html',
                           title='Dashboard',
+                          total_tweets=total_tweets,
                           recent_tweets=recent_tweets,
                           followed_tweets=followed_tweets,
                           trending_hashtags=trending_hashtags,
