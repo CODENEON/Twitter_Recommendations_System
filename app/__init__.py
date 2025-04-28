@@ -5,8 +5,6 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from config import Config
-from app.config.neo4j_config import Neo4jConfig
-from app.services.neo4j_service import TwitterGraph
 
 
 # Initialize extensions
@@ -24,21 +22,6 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
-    
-    # Initialize Neo4j
-    try:
-        neo4j_params = Neo4jConfig.get_connection_params()
-        app.neo4j = TwitterGraph(
-            uri=neo4j_params['uri'],
-            user=neo4j_params['user'],
-            password=neo4j_params['password']
-        )
-        # Initialize Neo4j schema
-        with app.app_context():
-            app.neo4j.initialize_schema()
-    except Exception as e:
-        print(f"Warning: Could not connect to Neo4j database. Some features may be limited. Error: {str(e)}")
-        app.neo4j = None
     
     # Download NLTK data if not already present
     nltk_data_path = app.config['NLTK_DATA_PATH']

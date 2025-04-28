@@ -22,8 +22,3 @@ class Config:
     
     # NLTK and TextBlob settings
     NLTK_DATA_PATH = os.path.join(basedir, 'nltk_data')
-
-    # Neo4j configuration
-    NEO4J_URI = os.environ.get('NEO4J_URI') or 'bolt://localhost:7687'
-    NEO4J_USER = os.environ.get('NEO4J_USER') or 'neo4j'
-    NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD') or 'your_password_here'

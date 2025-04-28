@@ -1,169 +1,78 @@
 # Twitter Recommender System
 
-A comprehensive Twitter-like application with advanced recommendation and sentiment analysis features.
+A Flask-based web application that provides personalized recommendations for Twitter users based on their interests and interactions.
 
 ## Features
 
-### 1. User Management
-- **User Authentication**
-  - Secure registration and login system
-  - Password hashing for security
-  - Session management
-- **User Profiles**
-  - Customizable profile information
-  - Profile picture upload
-  - User bio and personal details
-- **Social Features**
-  - Follow/Unfollow other users
-  - View user's tweets and activity
-  - User activity timeline
+- User authentication and profile management
+- Tweet creation and interaction (likes, retweets)
+- Hashtag tracking and analysis
+- Personalized recommendations based on:
+  - User interests and hashtag usage
+  - Similar users' content
+  - Trending topics
+- Social network analysis
+- Hashtag relationship analysis
 
-### 2. Tweet Management
-- **Tweet Creation**
-  - Create tweets with 280 character limit
-  - Real-time character count
-  - Quick tweet creation from dashboard
-- **Tweet Interactions**
-  - Like/Unlike tweets
-  - Delete own tweets
-  - View tweet details
-  - Reply to tweets
-- **Tweet Organization**
-  - Automatic hashtag extraction
-  - Sentiment analysis
-  - Tweet categorization
+## Tech Stack
 
-### 3. Hashtag System
-- **Hashtag Features**
-  - Automatic hashtag extraction from tweets
-  - Hashtag pages showing related tweets
-  - Related hashtags based on co-occurrence
-  - Trending hashtags
-- **Hashtag Discovery**
-  - Hashtag search functionality
-  - Popular hashtags
-  - Related hashtag suggestions
-
-### 4. Dashboard
-- **Feed Management**
-  - Recent tweets feed
-  - Tweets from followed users
-  - Personalized content
-- **Recommendations**
-  - Tweet recommendations
-  - User recommendations
-  - Hashtag recommendations
-- **Analytics**
-  - Sentiment statistics
-  - User activity metrics
-  - Trending content
-
-### 5. Sentiment Analysis
-- **Tweet Analysis**
-  - Automatic sentiment analysis
-  - Positive/Negative/Neutral classification
-  - Sentiment score calculation
-- **Visualization**
-  - Sentiment distribution charts
-  - User sentiment trends
-  - Comparative sentiment analysis
-
-### 6. Recommendation System
-- **Content-Based Recommendations**
-  - Tweet similarity matching
-  - Hashtag-based recommendations
-  - Keyword-based suggestions
-- **Collaborative Filtering**
-  - User similarity analysis
-  - Network-based recommendations
-  - Activity-based suggestions
-- **Hybrid Recommendations**
-  - Combined content and collaborative filtering
-  - Personalized feed generation
-  - Context-aware suggestions
-
-### 7. User Clustering
-- **Clustering Algorithms**
-  - TF-IDF based user clustering
-  - KMeans clustering
-  - Community detection
-- **Analysis Features**
-  - User similarity analysis
-  - Community visualization
-  - Cluster statistics
-
-### 8. API Endpoints
-- **Tweet API**
-  - Create tweets
-  - Get tweet details
-  - Delete tweets
-- **Dashboard API**
-  - Get feed data
-  - Get recommendations
-  - Get statistics
-- **Hashtag API**
-  - Get hashtag data
-  - Get related hashtags
-  - Get trending hashtags
-- **User API**
-  - Get user recommendations
-  - Get user activity
-  - Get user statistics
-
-### 9. Data Visualization
-- **Charts and Graphs**
-  - Sentiment distribution
-  - User clustering
-  - Trending hashtags
-  - Activity metrics
-- **Interactive Visualizations**
-  - Real-time updates
-  - Interactive charts
-  - Customizable views
-
-### 10. Search Functionality
-- **Search Features**
-  - Hashtag search
-  - User search
-  - Tweet search
-- **Advanced Search**
-  - Filter by sentiment
-  - Filter by date
-  - Filter by popularity
-
-## Technical Stack
 - **Backend**: Python, Flask
-- **Database**: SQLAlchemy, Neo4j
-- **Machine Learning**: scikit-learn, NLTK
-- **Frontend**: HTML, CSS, JavaScript
-- **Visualization**: Matplotlib, Seaborn
-- **Processing**: Dask for parallel processing
+- **Database**: SQLite (development), PostgreSQL (production)
+- **Frontend**: HTML, CSS, JavaScript, Bootstrap
+- **Authentication**: Flask-Login
+- **Data Analysis**: scikit-learn, pandas, numpy
 
 ## Installation
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Set up environment variables
-4. Initialize the database
-5. Run the application:
-   ```bash
-   python run.py
-   ```
 
-## Configuration
-- Create a `.env` file with necessary configurations
-- Set up database connections
-- Configure API keys if needed
-- Set up email service for notifications
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/twitter-recommender.git
+cd twitter-recommender
+```
+
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+5. Initialize the database:
+```bash
+flask db init
+flask db migrate
+flask db upgrade
+```
+
+6. Run the application:
+```bash
+flask run
+```
+
+## API Endpoints
+
+- `/api/recommendations` - Get personalized recommendations
+- `/api/network/analysis` - Analyze social network connections
+- `/api/hashtags/analysis` - Analyze hashtag relationships and trends
 
 ## Contributing
+
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
+
 This project is licensed under the MIT License - see the LICENSE file for details. 
