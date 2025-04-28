@@ -1,0 +1,8 @@
+user_id,username,tweet_text,hashtag_text,avg_sentiment,tweet_count,x,y,cluster
+1,ab77744,Today csk vs lsg match is awesome Today csk vs lsg match is awesome,,1.0,2,3.5188282264194597,-0.06271574501050507,1
+2,somesh,"Thala dhoni finishes off in style
+#csk #win Thala dhoni finishes off in style
+#csk #win",csk win,0.8,2,-1.6586906499374974,1.6746140211800518,0
+3,ratnesh,"It is the Mahi way
+#csk #thala #win #yellove It is the Mahi way
+#csk #thala #win #yellove",csk win thala yellove csk win thala yellove,0.8,2,-1.8601375764819639,-1.611898276169547,0
