@@ -22,3 +22,5 @@ seaborn
 dask[complete]==2023.12.1
 distributed==2023.12.1
 py2neo==2021.2.4
+pandas
+scikit-surprise

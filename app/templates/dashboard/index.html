@@ -351,19 +351,54 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({ content: content })
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                // Try to parse error message from response body
+                return response.json().then(errData => {
+                    throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+                }).catch(() => {
+                    // Fallback if response body is not JSON or doesn't contain 'error'
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
+                // This case might be redundant if the !response.ok check handles API errors
                 alert('Error: ' + data.error);
-            } else {
+            } else if (data.id && data.text && data.sentiment) { // Check for essential data
                 // Clear the form
                 tweetContent.value = '';
                 charCount.textContent = `${maxLength} characters remaining`;
                 charCount.className = 'text-muted';
-                
+
+                // Format timestamp (assuming ISO string like '2023-10-27T10:30:00Z')
+                const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString('en-US', { 
+                    month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true 
+                }) : 'Just now';
+
+                // Build hashtags HTML
+                let hashtagsHtml = '';
+                if (data.hashtags && data.hashtags.length > 0) {
+                    hashtagsHtml = '<div class="mb-2">';
+                    data.hashtags.forEach(tag => {
+                        // Note: url_for cannot be used directly in JS like this for dynamic tags.
+                        // This creates a basic link structure; a real implementation might need a different approach
+                        // or pass the base URL from Flask to JS.
+                        const hashtagUrl = `{{ url_for('tweet.hashtag', tag_text='__TAG__') }}`.replace('__TAG__', tag);
+                        hashtagsHtml += `<a href="${hashtagUrl}" class="badge bg-primary text-decoration-none me-1">#${tag}</a>`;
+                    });
+                    hashtagsHtml += '</div>';
+                }
+
+                // Build delete form URL
+                // Note: Similar issue with url_for for dynamic IDs.
+                const deleteUrl = `{{ url_for('tweet.delete', tweet_id=0) }}`.replace('0', data.id);
+
                 // Create new tweet element and prepend it to the container
                 const tweetHtml = `
-                    <div class="card mb-3">
+                    <div class="card mb-3" id="tweet-${data.id}">
                         <div class="card-body">
                             <div class="d-flex justify-content-between">
                                 <h5 class="card-title">
@@ -371,30 +406,43 @@ document.addEventListener('DOMContentLoaded', function() {
                                         {{ current_user.username }}
                                     </a>
                                 </h5>
-                                <small class="text-muted">Just now</small>
+                                <small class="text-muted">${timestamp}</small>
                             </div>
-                            <p class="card-text">${data.text}</p>
+                            <p class="card-text">${data.text.replace(/\n/g, '<br>')}</p> <!-- Handle potential newlines -->
+                            ${hashtagsHtml}
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <span class="badge ${data.sentiment === 'positive' ? 'bg-success' : data.sentiment === 'negative' ? 'bg-danger' : 'bg-secondary'}">
                                         ${data.sentiment.charAt(0).toUpperCase() + data.sentiment.slice(1)}
                                     </span>
                                 </div>
+                                <form action="${deleteUrl}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this tweet?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
                             </div>
                         </div>
                     </div>
                 `;
-                
+
                 const container = document.getElementById('recent-tweets-container');
+                // Remove placeholder if it exists
+                const placeholder = container.querySelector('.text-center');
+                if (placeholder && placeholder.textContent.includes("You haven't posted any tweets yet")) {
+                    placeholder.remove();
+                }
                 container.insertAdjacentHTML('afterbegin', tweetHtml);
-                
-                // Show success message
-                alert('Tweet posted successfully!');
+
+                // Optional: Show a more subtle success message (e.g., Bootstrap toast)
+                // alert('Tweet posted successfully!'); 
+            } else {
+                 alert('Error: Received incomplete tweet data from server.');
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert('An error occurred while posting your tweet.');
+            console.error('Error posting tweet:', error);
+            alert('An error occurred while posting your tweet: ' + error.message);
         });
     });
 });
