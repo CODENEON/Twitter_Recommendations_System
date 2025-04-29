@@ -35,6 +35,7 @@ def load_training_data():
     
     total_processed = 0
     total_errors = 0
+    total_duplicates = 0
     batch_size = 1000
     
     with app.app_context():
@@ -98,6 +99,16 @@ def load_training_data():
                             db.session.add(user)
                             db.session.flush()  # Get the user ID
                         
+                        # Check for duplicate tweet from the same user
+                        existing_tweet = Tweet.query.filter_by(
+                            user_id=user.id,
+                            text=text
+                        ).first()
+                        
+                        if existing_tweet:
+                            total_duplicates += 1
+                            continue
+                        
                         # Create tweet
                         tweet = Tweet(
                             text=text,
@@ -148,8 +159,9 @@ def load_training_data():
     
     print(f"\nData loading completed!")
     print(f"Total tweets processed: {total_processed}")
+    print(f"Total duplicates skipped: {total_duplicates}")
     print(f"Total errors encountered: {total_errors}")
-    print(f"Success rate: {(total_processed / (total_processed + total_errors)) * 100:.2f}%")
+    print(f"Success rate: {(total_processed / (total_processed + total_errors + total_duplicates)) * 100:.2f}%")
 
 if __name__ == '__main__':
     load_training_data() 
