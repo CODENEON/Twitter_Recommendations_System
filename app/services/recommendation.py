@@ -1,27 +1,89 @@
+"""
+Tweet and user recommendation module with parallel processing.
+Uses Dask to parallelize computationally intensive operations.
+"""
+
 from collections import Counter
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import logging
+import time
+
+# Dask imports for parallel processing
+import dask.array as da
+import dask.dataframe as dd
+from dask.distributed import Client, LocalCluster
+from dask import delayed
+
 from app import db
 from app.models import User, Tweet, Hashtag, Follow
 from sqlalchemy import func, and_
 
-def get_recommended_tweets(user, limit=5):
+# Configure logging
+logging.basicConfig(level=logging.INFO, 
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Global Dask client for reuse across functions
+_dask_client = None
+
+def get_dask_client(n_workers=None, threads_per_worker=2, memory_limit='2GB'):
+    """
+    Get or create a Dask client for parallel processing.
+    
+    Args:
+        n_workers: Number of worker processes (None = auto-detect)
+        threads_per_worker: Number of threads per worker
+        memory_limit: Memory limit per worker
+        
+    Returns:
+        Dask client instance
+    """
+    global _dask_client
+    
+    if _dask_client is None or not _dask_client.status == 'running':
+        logger.info("Starting Dask client for parallel processing...")
+        
+        # Create a local cluster
+        cluster = LocalCluster(
+            n_workers=n_workers,
+            threads_per_worker=threads_per_worker,
+            memory_limit=memory_limit
+        )
+        
+        # Create a client
+        _dask_client = Client(cluster)
+        logger.info(f"Dask dashboard available at: {_dask_client.dashboard_link}")
+    
+    return _dask_client
+
+def close_dask_client():
+    """Close the Dask client when done."""
+    global _dask_client
+    
+    if _dask_client is not None:
+        logger.info("Closing Dask client...")
+        _dask_client.close()
+        _dask_client = None
+
+def get_recommended_tweets(user, limit=5, use_parallel=False, 
+                          n_workers=None, threads_per_worker=2, memory_limit='2GB'):
     """
     Get tweet recommendations for a user based on content similarity and collaborative filtering.
+    Uses parallel processing for improved performance on large datasets.
     
     Args:
         user: The User to get recommendations for
         limit: Maximum number of tweets to return
+        use_parallel: Whether to use parallel processing
+        n_workers: Number of Dask workers (None = auto-detect)
+        threads_per_worker: Threads per worker
+        memory_limit: Memory limit per worker
         
     Returns:
         List of recommended Tweet objects
     """
-    # Strategy:
-    # 1. Content-based: Find tweets similar to the user's liked/posted tweets
-    # 2. Collaborative filtering: Find tweets liked by similar users
-    # 3. Combine and return the top recommendations
-    
     # Get all user's tweets for content analysis
     user_tweets = user.tweets.all()
     
@@ -35,31 +97,62 @@ def get_recommended_tweets(user, limit=5):
     # Get IDs of tweets the user has already seen/created
     user_tweet_ids = [tweet.id for tweet in user_tweets]
     
-    # Content-based filtering
-    content_recommendations = _get_content_based_recommendations(user, user_tweet_ids, limit*2)
+    # Initialize Dask client if using parallel processing
+    client = get_dask_client(n_workers, threads_per_worker, memory_limit) if use_parallel else None
     
-    # Collaborative filtering
-    collab_recommendations = _get_collaborative_recommendations(user, user_tweet_ids, limit*2)
-    
-    # Combine recommendations (with priority to content-based)
-    combined_recommendations = []
-    
-    # Add content-based recommendations first
-    combined_recommendations.extend(content_recommendations)
-    
-    # Add collaborative recommendations if there's room
-    remaining = limit - len(combined_recommendations)
-    if remaining > 0:
-        # Add only those collaborative recommendations that aren't already in the list
-        existing_ids = [tweet.id for tweet in combined_recommendations]
-        for tweet in collab_recommendations:
-            if tweet.id not in existing_ids and len(combined_recommendations) < limit:
-                combined_recommendations.append(tweet)
-    
-    return combined_recommendations[:limit]
+    try:
+        # Content-based filtering
+        logger.info("Getting content-based recommendations...")
+        start_time = time.time()
+        content_recommendations = _get_content_based_recommendations(
+            user, user_tweet_ids, limit*2, use_parallel=use_parallel, client=client
+        )
+        logger.info(f"Content-based recommendations completed in {time.time() - start_time:.2f}s")
+        
+        # Collaborative filtering
+        logger.info("Getting collaborative recommendations...")
+        start_time = time.time()
+        collab_recommendations = _get_collaborative_recommendations(
+            user, user_tweet_ids, limit*2, use_parallel=use_parallel, client=client
+        )
+        logger.info(f"Collaborative recommendations completed in {time.time() - start_time:.2f}s")
+        
+        # Combine recommendations (with priority to content-based)
+        combined_recommendations = []
+        
+        # Add content-based recommendations first
+        combined_recommendations.extend(content_recommendations)
+        
+        # Add collaborative recommendations if there's room
+        remaining = limit - len(combined_recommendations)
+        if remaining > 0:
+            # Add only those collaborative recommendations that aren't already in the list
+            existing_ids = [tweet.id for tweet in combined_recommendations]
+            for tweet in collab_recommendations:
+                if tweet.id not in existing_ids and len(combined_recommendations) < limit:
+                    combined_recommendations.append(tweet)
+        
+        return combined_recommendations[:limit]
+        
+    finally:
+        # Don't close the client here to allow reuse
+        pass
 
-def _get_content_based_recommendations(user, excluded_tweet_ids, limit=10):
-    """Helper function for content-based filtering."""
+def _get_content_based_recommendations(user, excluded_tweet_ids, limit=10, 
+                                     use_parallel=False, client=None):
+    """
+    Helper function for content-based filtering with parallel processing.
+    
+    Args:
+        user: User to get recommendations for
+        excluded_tweet_ids: IDs of tweets to exclude
+        limit: Maximum number of recommendations
+        use_parallel: Whether to use parallel processing
+        client: Dask client instance (None = create new client)
+        
+    Returns:
+        List of recommended Tweet objects
+    """
     # Get user's tweets for analysis
     user_tweets = user.tweets.all()
     
@@ -79,6 +172,76 @@ def _get_content_based_recommendations(user, excluded_tweet_ids, limit=10):
     all_tweets = user_tweets + other_tweets
     tweet_texts = [tweet.text for tweet in all_tweets]
     
+    if use_parallel:
+        # Get Dask client if not provided
+        if client is None:
+            client = get_dask_client()
+        
+        # Process in parallel
+        return _parallel_content_recommendations(
+            user_tweets, other_tweets, tweet_texts, limit, client
+        )
+    else:
+        # Process sequentially
+        return _sequential_content_recommendations(
+            user_tweets, other_tweets, tweet_texts, limit
+        )
+
+def _parallel_content_recommendations(user_tweets, other_tweets, tweet_texts, limit, client):
+    """Parallel implementation of content-based recommendations."""
+    try:
+        # Define TF-IDF computation as a delayed task
+        @delayed
+        def compute_tfidf():
+            vectorizer = TfidfVectorizer(stop_words='english', min_df=2)
+            return vectorizer.fit_transform(tweet_texts)
+        
+        # Define user profile computation as a delayed task
+        @delayed
+        def compute_user_profile(tfidf_matrix):
+            user_tweet_count = len(user_tweets)
+            tfidf_array = tfidf_matrix.toarray()
+            
+            # Calculate user profile by averaging user tweet vectors
+            user_profile = np.zeros((1, tfidf_array.shape[1]))
+            for i in range(user_tweet_count):
+                user_profile += tfidf_array[i]
+            
+            if user_tweet_count > 0:
+                user_profile = user_profile / user_tweet_count
+                
+            return (user_profile, tfidf_array[user_tweet_count:])
+        
+        # Define similarity computation as a delayed task
+        @delayed
+        def compute_similarities(profile_and_tfidf):
+            # FIX: Properly unpack the tuple after computation
+            user_profile, other_tfidf = profile_and_tfidf
+            
+            similarities = cosine_similarity(user_profile, other_tfidf)[0]
+            
+            # Get the indices of the most similar tweets
+            similar_indices = similarities.argsort()[-limit:][::-1]
+            
+            # Return the recommended tweets
+            return [other_tweets[i] for i in similar_indices]
+        
+        # Chain the tasks
+        tfidf_matrix = compute_tfidf()
+        profile_and_tfidf = compute_user_profile(tfidf_matrix)
+        recommendations = compute_similarities(profile_and_tfidf)
+        
+        # Compute the final result
+        result = client.compute(recommendations)
+        return result.result()  # Wait for result
+    
+    except Exception as e:
+        logger.error(f"Error in parallel content recommendations: {e}")
+        # Fallback to sequential processing
+        return _sequential_content_recommendations(user_tweets, other_tweets, tweet_texts, limit)
+
+def _sequential_content_recommendations(user_tweets, other_tweets, tweet_texts, limit):
+    """Sequential implementation of content-based recommendations."""
     # Create TF-IDF vectors
     vectorizer = TfidfVectorizer(stop_words='english', min_df=2)
     tfidf_matrix = vectorizer.fit_transform(tweet_texts)
@@ -100,15 +263,23 @@ def _get_content_based_recommendations(user, excluded_tweet_ids, limit=10):
     similar_indices = similarities.argsort()[-limit:][::-1]
     
     # Return the recommended tweets
-    recommendations = [other_tweets[i] for i in similar_indices]
-    return recommendations
+    return [other_tweets[i] for i in similar_indices]
 
-def _get_collaborative_recommendations(user, excluded_tweet_ids, limit=10):
-    """Helper function for collaborative-based filtering."""
-    # For this simplified implementation, we'll use a proxy for collaborative filtering:
-    # Find users similar to the current user based on hashtag usage,
-    # then recommend their recent tweets
+def _get_collaborative_recommendations(user, excluded_tweet_ids, limit=10, 
+                                     use_parallel=False, client=None):
+    """
+    Helper function for collaborative-based filtering with parallel processing.
     
+    Args:
+        user: User to get recommendations for
+        excluded_tweet_ids: IDs of tweets to exclude
+        limit: Maximum number of recommendations
+        use_parallel: Whether to use parallel processing
+        client: Dask client instance (None = create new client)
+        
+    Returns:
+        List of recommended Tweet objects
+    """
     # Get hashtags used by the current user
     user_hashtags = set()
     for tweet in user.tweets:
@@ -118,6 +289,62 @@ def _get_collaborative_recommendations(user, excluded_tweet_ids, limit=10):
     if not user_hashtags:
         return []
     
+    # If not using parallel processing, use the original implementation
+    if not use_parallel:
+        return _sequential_collaborative_recommendations(
+            user, user_hashtags, excluded_tweet_ids, limit
+        )
+    
+    # Get Dask client if not provided
+    if client is None:
+        client = get_dask_client()
+    
+    try:
+        # Find users who use similar hashtags
+        similar_users_query = db.session.query(
+            User.id,
+            func.count(Hashtag.id).label('shared_hashtags')
+        ).join(
+            Tweet, User.id == Tweet.user_id
+        ).join(
+            Tweet.hashtags
+        ).filter(
+            User.id != user.id,
+            Hashtag.id.in_(user_hashtags)
+        ).group_by(
+            User.id
+        ).order_by(
+            func.count(Hashtag.id).desc()
+        ).limit(10)
+        
+        # Execute query (not parallelized to avoid database connection issues)
+        similar_users = similar_users_query.all()
+        similar_user_ids = [u[0] for u in similar_users]
+        
+        if not similar_user_ids:
+            return []
+        
+        # Define parallel task to get tweets from similar users
+        @delayed
+        def get_tweets_from_similar_users():
+            return Tweet.query.filter(
+                Tweet.user_id.in_(similar_user_ids),
+                ~Tweet.id.in_(excluded_tweet_ids)
+            ).order_by(
+                Tweet.timestamp.desc()
+            ).limit(limit).all()
+        
+        # Compute in parallel
+        recommendations = client.compute(get_tweets_from_similar_users())
+        
+        return recommendations.result()
+    
+    finally:
+        # Don't close the client here to allow reuse
+        pass
+
+def _sequential_collaborative_recommendations(user, user_hashtags, excluded_tweet_ids, limit):
+    """Sequential implementation of collaborative recommendations."""
     # Find users who use similar hashtags
     similar_users = db.session.query(
         User.id,
@@ -147,13 +374,19 @@ def _get_collaborative_recommendations(user, excluded_tweet_ids, limit=10):
     
     return recommendations
 
-def get_recommended_users(user, limit=5):
+def get_recommended_users(user, limit=5, use_parallel=False,
+                         n_workers=None, threads_per_worker=2, memory_limit='2GB'):
     """
     Get user recommendations (who to follow) based on shared interests and network analysis.
+    Uses parallel processing for improved performance on large datasets.
     
     Args:
         user: The User to get recommendations for
         limit: Maximum number of users to recommend
+        use_parallel: Whether to use parallel processing
+        n_workers: Number of Dask workers (None = auto-detect)
+        threads_per_worker: Threads per worker
+        memory_limit: Memory limit per worker
         
     Returns:
         List of recommended User objects
@@ -162,80 +395,65 @@ def get_recommended_users(user, limit=5):
     followed_user_ids = [follow.followee_id for follow in user.followed]
     followed_user_ids.append(user.id)  # Add the user's own ID
     
-    # Strategy 1: Find users with similar hashtag usage
-    hashtag_based_recommendations = _get_hashtag_based_user_recommendations(
-        user, followed_user_ids, limit
-    )
+    # Initialize Dask client if using parallel processing
+    client = get_dask_client(n_workers, threads_per_worker, memory_limit) if use_parallel else None
     
-    # Strategy 2: Find users with similar sentiment patterns
-    sentiment_based_recommendations = _get_sentiment_based_user_recommendations(
-        user, followed_user_ids, limit
-    )
-    
-    # Strategy 3: Find users with similar keywords in tweets
-    keyword_based_recommendations = _get_keyword_based_user_recommendations(
-        user, followed_user_ids, limit
-    )
-    
-    # Strategy 4: Find "friends of friends"
-    network_recommendations = _get_network_based_user_recommendations(
-        user, followed_user_ids, limit
-    )
-    
-    # Combine recommendations with a weighted approach
-    combined_recommendations = _combine_user_recommendations(
-        [
-            (hashtag_based_recommendations, 0.4),    # 40% weight
-            (sentiment_based_recommendations, 0.2),  # 20% weight
-            (keyword_based_recommendations, 0.3),    # 30% weight
-            (network_recommendations, 0.1)           # 10% weight
-        ],
-        limit
-    )
-    
-    return combined_recommendations
+    try:
+        # Strategy 1: Find users with similar hashtags
+        logger.info("Getting hashtag-based user recommendations...")
+        start_time = time.time()
+        hashtag_based_recommendations = _get_hashtag_based_user_recommendations(
+            user, followed_user_ids, limit*2, use_parallel=use_parallel, client=client
+        )
+        logger.info(f"Hashtag-based recommendations completed in {time.time() - start_time:.2f}s")
+        
+        # Strategy 2: Find "friends of friends"
+        logger.info("Getting network-based user recommendations...")
+        start_time = time.time()
+        network_recommendations = _get_network_based_user_recommendations(
+            user, followed_user_ids, limit*2, use_parallel=use_parallel, client=client
+        )
+        logger.info(f"Network-based recommendations completed in {time.time() - start_time:.2f}s")
+        
+        # Combine recommendations
+        combined_recommendations = []
+        existing_ids = set()
+        
+        # Add hashtag-based recommendations first
+        for rec_user in hashtag_based_recommendations:
+            if rec_user.id not in existing_ids:
+                combined_recommendations.append(rec_user)
+                existing_ids.add(rec_user.id)
+        
+        # Add network-based recommendations if there's room
+        remaining = limit - len(combined_recommendations)
+        if remaining > 0:
+            for rec_user in network_recommendations:
+                if rec_user.id not in existing_ids and len(combined_recommendations) < limit:
+                    combined_recommendations.append(rec_user)
+                    existing_ids.add(rec_user.id)
+        
+        return combined_recommendations[:limit]
+        
+    finally:
+        # Don't close the client here to allow reuse
+        pass
 
-def _combine_user_recommendations(recommendation_sets, limit):
+def _get_hashtag_based_user_recommendations(user, excluded_user_ids, limit=10,
+                                          use_parallel=False, client=None):
     """
-    Combine different recommendation sets with weights.
+    Helper function for hashtag-based user recommendations with parallel processing.
     
     Args:
-        recommendation_sets: List of tuples (recommendations, weight)
-        limit: Maximum recommendations to return
+        user: User to get recommendations for
+        excluded_user_ids: IDs of users to exclude
+        limit: Maximum number of recommendations
+        use_parallel: Whether to use parallel processing
+        client: Dask client instance (None = create new client)
         
     Returns:
-        Combined list of recommendations
+        List of recommended User objects
     """
-    # Create a score dictionary for all recommended users
-    user_scores = {}
-    
-    # Process each recommendation set with its weight
-    for recommendations, weight in recommendation_sets:
-        for i, user in enumerate(recommendations):
-            # Calculate score (higher position = higher score)
-            position_score = (len(recommendations) - i) / len(recommendations)
-            weighted_score = position_score * weight
-            
-            # Add to user's total score
-            if user.id in user_scores:
-                user_scores[user.id]['score'] += weighted_score
-            else:
-                user_scores[user.id] = {
-                    'user': user,
-                    'score': weighted_score
-                }
-    
-    # Sort by total score and return top recommendations
-    sorted_recommendations = sorted(
-        user_scores.values(),
-        key=lambda x: x['score'],
-        reverse=True
-    )
-    
-    return [item['user'] for item in sorted_recommendations[:limit]]
-
-def _get_hashtag_based_user_recommendations(user, excluded_user_ids, limit=10):
-    """Helper function for hashtag-based user recommendations."""
     # Get hashtags used by the current user
     user_hashtags = set()
     for tweet in user.tweets:
@@ -255,7 +473,48 @@ def _get_hashtag_based_user_recommendations(user, excluded_user_ids, limit=10):
         ).limit(limit).all()
         return popular_users
     
-    # Find users who use similar hashtags
+    # If not using parallel processing, use the original implementation
+    if not use_parallel:
+        return _sequential_hashtag_recommendations(user_hashtags, excluded_user_ids, limit)
+    
+    # Get Dask client if not provided
+    if client is None:
+        client = get_dask_client()
+    
+    try:
+        # Define parallel task to find similar users
+        @delayed
+        def find_similar_users():
+            similar_users = db.session.query(
+                User,
+                func.count(Hashtag.id).label('shared_hashtags')
+            ).join(
+                Tweet, User.id == Tweet.user_id
+            ).join(
+                Tweet.hashtags
+            ).filter(
+                ~User.id.in_(excluded_user_ids),
+                Hashtag.id.in_(user_hashtags)
+            ).group_by(
+                User.id
+            ).order_by(
+                func.count(Hashtag.id).desc()
+            ).limit(limit).all()
+            
+            # Extract just the User objects
+            return [u[0] for u in similar_users]
+        
+        # Compute in parallel
+        recommendations = client.compute(find_similar_users())
+        
+        return recommendations.result()
+    
+    finally:
+        # Don't close the client here to allow reuse
+        pass
+
+def _sequential_hashtag_recommendations(user_hashtags, excluded_user_ids, limit):
+    """Sequential implementation of hashtag-based recommendations."""
     similar_users = db.session.query(
         User,
         func.count(Hashtag.id).label('shared_hashtags')
@@ -275,145 +534,67 @@ def _get_hashtag_based_user_recommendations(user, excluded_user_ids, limit=10):
     # Extract just the User objects
     return [u[0] for u in similar_users]
 
-def _get_sentiment_based_user_recommendations(user, excluded_user_ids, limit=10):
-    """Helper function for sentiment-based user recommendations."""
-    # Calculate average sentiment score for the current user
-    user_tweets = user.tweets.all()
-    if not user_tweets:
-        return []
+def _get_network_based_user_recommendations(user, excluded_user_ids, limit=10,
+                                         use_parallel=False, client=None):
+    """
+    Helper function for network-based user recommendations with parallel processing.
     
-    # Calculate user's average sentiment
-    user_sentiment_scores = [tweet.sentiment_score for tweet in user_tweets]
-    user_avg_sentiment = sum(user_sentiment_scores) / len(user_sentiment_scores)
-    
-    # Get the most common sentiment label for the user
-    user_sentiment_labels = [tweet.sentiment_label for tweet in user_tweets]
-    user_dominant_sentiment = Counter(user_sentiment_labels).most_common(1)[0][0]
-    
-    # Find users with similar sentiment patterns
-    similar_sentiment_users = db.session.query(
-        User,
-        func.avg(Tweet.sentiment_score).label('avg_sentiment')
-    ).join(
-        Tweet, User.id == Tweet.user_id
-    ).filter(
-        ~User.id.in_(excluded_user_ids)
-    ).group_by(
-        User.id
-    ).having(
-        # Find users with average sentiment within a range of the user's average
-        func.avg(Tweet.sentiment_score).between(
-            user_avg_sentiment - 0.3, user_avg_sentiment + 0.3
-        )
-    ).order_by(
-        # Order by how close they are to the user's average sentiment
-        func.abs(func.avg(Tweet.sentiment_score) - user_avg_sentiment)
-    ).limit(limit).all()
-    
-    # Also find users with the same dominant sentiment label
-    dominant_sentiment_users = db.session.query(
-        User,
-        func.count(Tweet.id).label('tweet_count')
-    ).join(
-        Tweet, User.id == Tweet.user_id
-    ).filter(
-        ~User.id.in_(excluded_user_ids),
-        Tweet.sentiment_label == user_dominant_sentiment
-    ).group_by(
-        User.id
-    ).order_by(
-        func.count(Tweet.id).desc()
-    ).limit(limit).all()
-    
-    # Combine both sets, prioritizing those who appear in both
-    sentiment_users = []
-    
-    # Get user IDs from both sets
-    similar_avg_ids = [u[0].id for u in similar_sentiment_users]
-    similar_label_ids = [u[0].id for u in dominant_sentiment_users]
-    
-    # First add users who appear in both sets
-    for user_id in set(similar_avg_ids).intersection(set(similar_label_ids)):
-        for u in similar_sentiment_users:
-            if u[0].id == user_id:
-                sentiment_users.append(u[0])
-                break
-    
-    # Then add remaining users from both sets
-    for users in [similar_sentiment_users, dominant_sentiment_users]:
-        for u in users:
-            if u[0].id not in [user.id for user in sentiment_users]:
-                sentiment_users.append(u[0])
-                if len(sentiment_users) >= limit:
-                    break
-        if len(sentiment_users) >= limit:
-            break
-    
-    return sentiment_users[:limit]
-
-def _get_keyword_based_user_recommendations(user, excluded_user_ids, limit=10):
-    """Helper function for keyword-based user recommendations."""
-    # Extract text from user's tweets
-    user_tweets = user.tweets.all()
-    if not user_tweets:
-        return []
-    
-    # Combine all user's tweet texts
-    user_tweet_text = " ".join([tweet.text for tweet in user_tweets])
-    
-    # Extract important keywords using TF-IDF
-    vectorizer = TfidfVectorizer(stop_words='english', max_features=50)
-    
-    # We need at least 2 documents for TF-IDF, so add a dummy document
-    all_texts = [user_tweet_text, "dummy document"]
-    tfidf_matrix = vectorizer.fit_transform(all_texts)
-    
-    # Get the feature names (keywords)
-    feature_names = vectorizer.get_feature_names_out()
-    
-    # Get the TF-IDF scores for the user's combined text
-    user_tfidf = tfidf_matrix[0]
-    
-    # Get the keywords with highest TF-IDF scores
-    user_keyword_indices = user_tfidf.toarray()[0].argsort()[-20:][::-1]
-    user_keywords = [feature_names[i] for i in user_keyword_indices]
-    
-    # Find users who use similar keywords
-    other_users = User.query.filter(
-        ~User.id.in_(excluded_user_ids)
-    ).all()
-    
-    user_similarity_scores = []
-    
-    # For each user, check how many of the keywords appear in their tweets
-    for other_user in other_users:
-        other_tweets = other_user.tweets.all()
-        if not other_tweets:
-            continue
+    Args:
+        user: User to get recommendations for
+        excluded_user_ids: IDs of users to exclude
+        limit: Maximum number of recommendations
+        use_parallel: Whether to use parallel processing
+        client: Dask client instance (None = create new client)
         
-        other_tweet_text = " ".join([tweet.text for tweet in other_tweets])
-        
-        # Count how many of the user's keywords appear in this user's tweets
-        keyword_matches = sum(1 for keyword in user_keywords if keyword.lower() in other_tweet_text.lower())
-        
-        if keyword_matches > 0:
-            user_similarity_scores.append((other_user, keyword_matches))
-    
-    # Sort by number of keyword matches (descending)
-    user_similarity_scores.sort(key=lambda x: x[1], reverse=True)
-    
-    # Extract just the User objects
-    return [u[0] for u in user_similarity_scores[:limit]]
-
-def _get_network_based_user_recommendations(user, excluded_user_ids, limit=10):
-    """Helper function for network-based user recommendations (friends of friends)."""
+    Returns:
+        List of recommended User objects
+    """
     # Get IDs of users that the current user follows
     followed_ids = [follow.followee_id for follow in user.followed]
     
     if not followed_ids:
         return []
     
-    # Find users followed by the users the current user follows (friends of friends)
+    # If not using parallel processing, use the original implementation
+    if not use_parallel:
+        return _sequential_network_recommendations(followed_ids, excluded_user_ids, limit)
+    
+    # Get Dask client if not provided
+    if client is None:
+        client = get_dask_client()
+    
+    try:
+        # Define parallel task to find friends of friends
+        @delayed
+        def find_friends_of_friends():
+            friends_of_friends = db.session.query(
+                User,
+                func.count(Follow.follower_id).label('follower_count')
+            ).join(
+                Follow, User.id == Follow.followee_id
+            ).filter(
+                Follow.follower_id.in_(followed_ids),
+                ~User.id.in_(excluded_user_ids)
+            ).group_by(
+                User.id
+            ).order_by(
+                func.count(Follow.follower_id).desc()
+            ).limit(limit).all()
+            
+            # Extract just the User objects
+            return [u[0] for u in friends_of_friends]
+        
+        # Compute in parallel
+        recommendations = client.compute(find_friends_of_friends())
+        
+        return recommendations.result()
+    
+    finally:
+        # Don't close the client here to allow reuse
+        pass
+
+def _sequential_network_recommendations(followed_ids, excluded_user_ids, limit):
+    """Sequential implementation of network-based recommendations."""
     friends_of_friends = db.session.query(
         User,
         func.count(Follow.follower_id).label('follower_count')
@@ -430,3 +611,7 @@ def _get_network_based_user_recommendations(user, excluded_user_ids, limit=10):
     
     # Extract just the User objects
     return [u[0] for u in friends_of_friends]
+
+def shutdown_parallel_processing():
+    """Shut down the Dask client when done with all processing."""
+    close_dask_client()
