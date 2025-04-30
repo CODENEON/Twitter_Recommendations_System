@@ -377,13 +377,13 @@ def get_recommended_users(user, limit=7, use_parallel=False,
         cluster_assignments = {}
         try:
             clusters, user_data = gen_clusters(return_assignments=True)
-            print(clusters)
+    
             for idx, user in enumerate(user_data):
                 cluster_assignments[user['id']] = int(clusters[idx])
         except Exception as e:
             cluster_assignments = {}
         user_cluster_map = cluster_assignments
-        for cluster_id, data in cluster_data['cluster_analysis'].items():
+        for cluster_id, data in clusters['cluster_analysis'].items():
             for uid in data['user_ids']:
                 user_cluster_map[uid] = int(cluster_id)
     except Exception as e:

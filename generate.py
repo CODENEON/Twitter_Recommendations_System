@@ -122,7 +122,7 @@ def generate_clusters():
             logger.info("Cluster generation completed successfully")
     except Exception as e:
         logger.error(f"Error generating clusters: {str(e)}", exc_info=True)
-    return  clusters, user_data
+    
 
 def run_visualization_server():
     app.run(port=5001)

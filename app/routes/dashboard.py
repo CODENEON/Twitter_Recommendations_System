@@ -22,17 +22,20 @@ def index():
     ).limit(current_app.config['TWEETS_PER_PAGE']).all()
     
     trending_hashtags = get_trending_hashtags(
-        limit=current_app.config['TRENDING_HASHTAGS_COUNT']
+        limit=current_app.config['TRENDING_HASHTAGS_COUNT'],
+        
     )
     
     recommended_tweets = get_recommended_tweets(
         current_user, 
-        limit=current_app.config['RECOMMENDATIONS_COUNT']
+        limit=current_app.config['RECOMMENDATIONS_COUNT'],
+        
     )
     
     recommended_users = get_recommended_users(
         current_user,
-        limit=current_app.config['RECOMMENDATIONS_COUNT']
+        limit=current_app.config['RECOMMENDATIONS_COUNT'],
+        
     )
     
     sentiment_stats = get_user_sentiment_stats(current_user)
