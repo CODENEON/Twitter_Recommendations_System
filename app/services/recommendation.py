@@ -11,8 +11,8 @@ from surprise.model_selection import train_test_split
 from app import db
 from app.models import User, Tweet, Hashtag, Follow
 from sqlalchemy import func
+from generate_clusters import generate_clusters as gen_clusters
 
-# Logging setup
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -113,7 +113,6 @@ def get_recommended_tweets(user, limit=5, use_parallel=False,
 
         final_recommendations = [tweet for score, tweet in sorted_scored_tweets]
 
-        # If still not enough, add recent popular tweets
         if len(final_recommendations) < limit:
             needed = limit - len(final_recommendations)
             logger.info(f"Filling remaining {needed} slots with popular tweets...")
@@ -132,16 +131,14 @@ def get_recommended_tweets(user, limit=5, use_parallel=False,
 
 def _get_content_based_recommendations(user, excluded_tweet_ids, limit=10, 
                                      use_parallel=False, client=None):
-    # Get user's tweets for analysis
     user_tweets = user.tweets.all()
     
-    # Get a sample of other tweets for comparison
     other_tweets = Tweet.query.filter(
         Tweet.user_id != user.id,
         ~Tweet.id.in_(excluded_tweet_ids)
     ).order_by(
         Tweet.timestamp.desc()
-    ).limit(500).all()  # Limit to 500 for now
+    ).limit(500).all() 
     
     if not other_tweets:
         return []
@@ -169,7 +166,6 @@ def _parallel_content_recommendations(user_tweets, other_tweets, tweet_texts, li
             vectorizer = TfidfVectorizer(stop_words='english', min_df=2)
             return vectorizer.fit_transform(tweet_texts)
         
-        # Define user profile computation as a delayed task
         @delayed
         def compute_user_profile(tfidf_matrix):
             user_tweet_count = len(user_tweets)
@@ -196,14 +192,12 @@ def _parallel_content_recommendations(user_tweets, other_tweets, tweet_texts, li
             
             return [other_tweets[i] for i in similar_indices]
         
-        # Chain the tasks
         tfidf_matrix = compute_tfidf()
         profile_and_tfidf = compute_user_profile(tfidf_matrix)
         recommendations = compute_similarities(profile_and_tfidf)
         
-        # Compute the final result
         result = client.compute(recommendations)
-        return result.result()  # Wait for result
+        return result.result() 
     
     except Exception as e:
         logger.error(f"Error in parallel content recommendations: {e}")
@@ -231,7 +225,7 @@ def _sequential_content_recommendations(user_tweets, other_tweets, tweet_texts, 
 
 def _get_latent_factor_recommendations(user, excluded_tweet_ids, limit=10):
     try:
-        all_user_tweet_pairs = db.session.query(Tweet.user_id, Tweet.id).limit(10000).all() # Limit for performance
+        all_user_tweet_pairs = db.session.query(Tweet.user_id, Tweet.id).limit(30000).all()
         if not all_user_tweet_pairs:
             logger.warning("No user-tweet interactions found for SVD.")
             return []
@@ -266,10 +260,8 @@ def _get_latent_factor_recommendations(user, excluded_tweet_ids, limit=10):
             logger.info(f"No new tweets found to recommend for user {user.id} via SVD.")
             return []
 
-        # Predict ratings for these tweets
         predictions = [algo.predict(user.id, tweet_id) for tweet_id in tweets_to_predict]
 
-        # Sort predictions and get top N
         predictions.sort(key=lambda x: x.est, reverse=True)
         
         top_n_predictions = predictions[:limit]
@@ -380,13 +372,29 @@ def _sequential_collaborative_recommendations(user, user_hashtags, excluded_twee
 
 def get_recommended_users(user, limit=7, use_parallel=False,
                          n_workers=None, threads_per_worker=2, memory_limit='2GB'):
+    try:
+        # Run clustering and capture assignments
+        cluster_assignments = {}
+        try:
+            clusters, user_data = gen_clusters(return_assignments=True)
+            print(clusters)
+            for idx, user in enumerate(user_data):
+                cluster_assignments[user['id']] = int(clusters[idx])
+        except Exception as e:
+            cluster_assignments = {}
+        user_cluster_map = cluster_assignments
+        for cluster_id, data in cluster_data['cluster_analysis'].items():
+            for uid in data['user_ids']:
+                user_cluster_map[uid] = int(cluster_id)
+    except Exception as e:
+        user_cluster_map = {}
 
     # Get users the current user already follows
     followed_user_ids = [follow.followee_id for follow in user.followed]
     followed_user_ids.append(user.id) 
-    
+
     client = get_dask_client(n_workers, threads_per_worker, memory_limit) if use_parallel else None
-    
+
     try:
         # Strategy 1: Find users with similar hashtags
         logger.info("Getting hashtag-based user recommendations...")
@@ -403,25 +411,34 @@ def get_recommended_users(user, limit=7, use_parallel=False,
             user, followed_user_ids, limit*2, use_parallel=use_parallel, client=client
         )
         logger.info(f"Network-based recommendations completed in {time.time() - start_time:.2f}s")
-        
+
+        # Strategy 3: Cluster-based recommendations
+        cluster_recommendations = []
+        if user.id in user_cluster_map:
+            user_cluster = user_cluster_map[user.id]
+            cluster_user_ids = [uid for uid, cid in user_cluster_map.items() if cid == user_cluster and uid not in followed_user_ids]
+            if cluster_user_ids:
+                cluster_recommendations = User.query.filter(User.id.in_(cluster_user_ids)).limit(limit*2).all()
+
         combined_recommendations = []
         existing_ids = set()
-        
-        for rec_user in hashtag_based_recommendations:
-            if rec_user.id not in existing_ids:
+
+        # Prioritize cluster-based recommendations
+        for rec_user in cluster_recommendations:
+            if rec_user.id not in existing_ids and len(combined_recommendations) < limit:
                 combined_recommendations.append(rec_user)
                 existing_ids.add(rec_user.id)
-        
+        # Add hashtag-based recommendations
+        for rec_user in hashtag_based_recommendations:
+            if rec_user.id not in existing_ids and len(combined_recommendations) < limit:
+                combined_recommendations.append(rec_user)
+                existing_ids.add(rec_user.id)
         # Add network-based recommendations if there's room
-        remaining = limit - len(combined_recommendations)
-        if remaining > 0:
-            for rec_user in network_recommendations:
-                if rec_user.id not in existing_ids and len(combined_recommendations) < limit:
-                    combined_recommendations.append(rec_user)
-                    existing_ids.add(rec_user.id)
-        
+        for rec_user in network_recommendations:
+            if rec_user.id not in existing_ids and len(combined_recommendations) < limit:
+                combined_recommendations.append(rec_user)
+                existing_ids.add(rec_user.id)
         return combined_recommendations[:limit]
-        
     finally:
         pass
 

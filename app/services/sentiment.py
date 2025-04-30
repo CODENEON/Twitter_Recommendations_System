@@ -6,7 +6,7 @@ import dask.dataframe as dd
 from dask.distributed import Client, LocalCluster
 from dask import delayed
 
-from app.models import Tweet, User
+from app.models import Tweet
 from app import db
 
 logging.basicConfig(level=logging.INFO, 

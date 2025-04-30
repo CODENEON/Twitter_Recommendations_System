@@ -20,9 +20,6 @@ from dask import delayed
 import dask.array as da
 
 def process_user_tweets_parallel(users, client):
-    """
-    Process user tweets in parallel using Dask
-    """
     # Convert user data to Dask DataFrame
     user_data = []
     for user in users:
