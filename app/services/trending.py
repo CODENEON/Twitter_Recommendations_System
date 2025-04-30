@@ -13,7 +13,6 @@ from app.models import Hashtag, Tweet, TweetHashtag
 from app import db
 from sqlalchemy import func, desc
 
-# Logging setup
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -21,32 +20,24 @@ logger = logging.getLogger(__name__)
 _dask_client = None
 
 def get_dask_client(n_workers=None, threads_per_worker=2, memory_limit='2GB'):
-    """
-    Get or create a Dask client for parallel processing.
-    Returns an existing client if one is already running.
-    """
+    
     global _dask_client
     
     if _dask_client is None or not _dask_client.status == 'running':
         logger.info("Starting Dask client for parallel processing...")
         
-        # Create a local cluster
         cluster = LocalCluster(
             n_workers=n_workers,
             threads_per_worker=threads_per_worker,
             memory_limit=memory_limit
         )
         
-        # Create a client
         _dask_client = Client(cluster)
         logger.info(f"Dask dashboard available at: {_dask_client.dashboard_link}")
     
     return _dask_client
 
 def close_dask_client():
-    """
-    Close the Dask client and clean up resources.
-    """
     global _dask_client
     
     if _dask_client is not None:
@@ -56,10 +47,7 @@ def close_dask_client():
 
 def update_trending_scores(use_parallel=False, n_workers=None, 
                          threads_per_worker=2, memory_limit='2GB', batch_size=100):
-    """
-    Update trending scores for all hashtags.
-    The score is calculated based on tweet count and recency.
-    """
+    
     logger.info("Updating trending scores...")
     start_time = time.time()
     
@@ -73,7 +61,7 @@ def update_trending_scores(use_parallel=False, n_workers=None,
     client = get_dask_client(n_workers, threads_per_worker, memory_limit)
     
     try:
-        # Get tweet counts for each hashtag in the last week
+        # Get tweet counts for every hashtag in the last week
         hashtag_counts = db.session.query(
             Hashtag.id,
             func.count(Tweet.id).label('tweet_count')
@@ -89,12 +77,11 @@ def update_trending_scores(use_parallel=False, n_workers=None,
         
         all_hashtags = Hashtag.query.all()
         
-        # Create a dictionary for quick lookup of tweet counts
         hashtag_count_dict = {h_id: count for h_id, count in hashtag_counts}
         
         logger.info(f"Processing {len(all_hashtags)} hashtags in parallel...")
         
-        # Split hashtags into batches for parallel processing
+        # Spliting the hashtags into batches for parallel processing
         hashtag_batches = []
         for i in range(0, len(all_hashtags), batch_size):
             hashtag_batches.append(all_hashtags[i:i+batch_size])
@@ -103,19 +90,14 @@ def update_trending_scores(use_parallel=False, n_workers=None,
         
         @delayed
         def process_hashtag_batch(hashtags):
-            """
-            Process a batch of hashtags to calculate their trend scores.
-            The score is based on tweet count and recency factor.
-            """
             result = []
             for hashtag in hashtags:
                 tweet_count = hashtag_count_dict.get(hashtag.id, 0)
                 
-                # Calculate recency factor (1.0 to 2.0 based on hours since last update)
+                # Calculate recency factor
                 hours_since_update = (datetime.utcnow() - hashtag.last_updated).total_seconds() / 3600
                 recency_factor = 1.0 + min(1.0, hours_since_update / 24)
                 
-                # Calculate trend score using logarithmic scaling and recency factor
                 trend_score = math.log(tweet_count + 1) * recency_factor
                 
                 result.append((hashtag.id, trend_score))
@@ -126,11 +108,9 @@ def update_trending_scores(use_parallel=False, n_workers=None,
         for batch in hashtag_batches:
             batch_tasks.append(process_hashtag_batch(batch))
         
-        # Compute all batch tasks in parallel
         batch_results = client.compute(batch_tasks)
         batch_results = client.gather(batch_results)
         
-        # Combine results from all batches
         all_trend_scores = []
         for batch_result in batch_results:
             all_trend_scores.extend(batch_result)
@@ -152,10 +132,7 @@ def update_trending_scores(use_parallel=False, n_workers=None,
         pass
 
 def _update_trending_scores_sequential(week_ago):
-    """
-    Update trending scores sequentially (without parallel processing).
-    Used when parallel processing is disabled or for small datasets.
-    """
+    
     # Get tweet counts for each hashtag in the last week
     hashtag_counts = db.session.query(
         Hashtag.id,
@@ -170,15 +147,14 @@ def _update_trending_scores_sequential(week_ago):
         Hashtag.id
     ).all()
     
-    # Update scores for each hashtag
+    # same logic as in parallel processing of calculating trend scores
     for hashtag_id, tweet_count in hashtag_counts:
         hashtag = Hashtag.query.get(hashtag_id)
         if hashtag:
-            # Calculate recency factor (1.0 to 2.0 based on hours since last update)
+            
             hours_since_update = (datetime.utcnow() - hashtag.last_updated).total_seconds() / 3600
             recency_factor = 1.0 + min(1.0, hours_since_update / 24)
             
-            # Calculate trend score using logarithmic scaling and recency factor
             hashtag.trend_score = math.log(tweet_count + 1) * recency_factor
             hashtag.last_updated = datetime.utcnow()
     
@@ -186,11 +162,8 @@ def _update_trending_scores_sequential(week_ago):
 
 def get_trending_hashtags(limit=10, use_parallel=False, 
                         n_workers=None, threads_per_worker=2, memory_limit='2GB'):
-    """
-    Get the top trending hashtags.
-    First updates the trending scores, then returns the top N hashtags.
-    """
-    # Update trending scores before retrieving results
+    
+    # trending scores ko update karna pehle
     update_trending_scores(
         use_parallel=use_parallel,
         n_workers=n_workers,
@@ -198,7 +171,6 @@ def get_trending_hashtags(limit=10, use_parallel=False,
         memory_limit=memory_limit
     )
     
-    # Get top trending hashtags ordered by trend score
     trending_hashtags = Hashtag.query.order_by(
         Hashtag.trend_score.desc()
     ).limit(limit).all()
@@ -206,7 +178,4 @@ def get_trending_hashtags(limit=10, use_parallel=False,
     return trending_hashtags
 
 def shutdown_parallel_processing():
-    """
-    Shutdown the Dask client and clean up resources.
-    """
     close_dask_client()
