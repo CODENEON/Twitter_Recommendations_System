@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">User Clusters Analysis</h1>
+    
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Clustering Information</h5>
+                    <p class="card-text">
+                        <strong>Method:</strong> {{ clustering_results.method }}<br>
+                        <strong>Number of Clusters:</strong> {{ clustering_results.n_clusters }}<br>
+                        <strong>Total Users:</strong> {{ clustering_results.user_count }}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        {% for cluster_id in range(clustering_results.n_clusters) %}
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Cluster {{ cluster_id + 1 }}</h5>
+                </div>
+                <div class="card-body">
+                    <img src="{{ url_for('static', filename='img/clusters/cluster_' + cluster_id|string + '.png') }}" 
+                         class="img-fluid" 
+                         alt="Cluster {{ cluster_id + 1 }} Visualization">
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">About User Clustering</h5>
+                    <p class="card-text">
+                        This visualization shows how users are grouped based on their tweet content, 
+                        sentiment patterns, and hashtag usage. Each cluster represents a group of users 
+                        with similar behavior patterns.
+                    </p>
+                    <p class="card-text">
+                        <strong>How to interpret:</strong>
+                        <ul>
+                            <li>Users in the same cluster tend to have similar tweeting patterns</li>
+                            <li>The distance between points indicates similarity</li>
+                            <li>Clusters are formed using K-means clustering on user features</li>
+                        </ul>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

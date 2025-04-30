@@ -9,50 +9,33 @@ from dask import delayed
 from app.models import Tweet, User
 from app import db
 
-
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 _dask_client = None
 
-# Initialize Dask client
 def get_dask_client(n_workers=None, threads_per_worker=2, memory_limit='2GB'):
-    
     global _dask_client
     
     if _dask_client is None or not _dask_client.status == 'running':
         logger.info("Starting Dask client for parallel processing...")
         
-        # Create a local cluster
         cluster = LocalCluster(
             n_workers=n_workers,
             threads_per_worker=threads_per_worker,
             memory_limit=memory_limit
         )
         
-        # Create a client
         _dask_client = Client(cluster)
         logger.info(f"Dask dashboard available at: {_dask_client.dashboard_link}")
     
     return _dask_client
 
-def close_dask_client():
-    global _dask_client
-    
-    if _dask_client is not None:
-        logger.info("Closing Dask client...")
-        _dask_client.close()
-        _dask_client = None
-
-# It analyzes the sentiment of a text using TextBlob
 def analyze_sentiment(text):
     analysis = TextBlob(text)
-    
-    # Get the polarity score (-1.0 to 1.0)
     score = analysis.sentiment.polarity
     
-    # Classify the sentiment based on the score
     if score < -0.3:
         label = 'negative'
     elif score > 0.3:
@@ -64,7 +47,6 @@ def analyze_sentiment(text):
 
 def analyze_sentiment_batch(texts, use_parallel=True, 
                           n_workers=None, threads_per_worker=2, memory_limit='2GB'):
-    
     
     # small batches don't need parallelizing
     if not use_parallel or len(texts) < 10:
@@ -104,11 +86,8 @@ def analyze_sentiment_batch(texts, use_parallel=True,
 
 def update_tweet_sentiments(tweets=None, batch_size=100, use_parallel=True,
                           n_workers=None, threads_per_worker=2, memory_limit='2GB'):
-    
     logger.info("Updating tweet sentiment scores...")
     start_time = time.time()
-    
-    # If no tweets are provided, fetch all tweets without sentiment
     
     if tweets is None:
         tweets = Tweet.query.filter(
@@ -125,8 +104,6 @@ def update_tweet_sentiments(tweets=None, batch_size=100, use_parallel=True,
     updated_count = 0
     for i in range(0, len(tweets), batch_size):
         batch = tweets[i:i+batch_size]
-        
-        # Extracting text from tweets
         batch_texts = [tweet.text for tweet in batch]
         
         logger.info(f"Analyzing batch {i//batch_size + 1}/{len(tweets)//batch_size + 1} ({len(batch)} tweets)")
@@ -139,7 +116,6 @@ def update_tweet_sentiments(tweets=None, batch_size=100, use_parallel=True,
             memory_limit=memory_limit
         )
         
-        # Update tweets in the database
         for j, (score, label) in enumerate(batch_sentiments):
             batch[j].sentiment_score = score
             batch[j].sentiment_label = label
@@ -153,52 +129,16 @@ def update_tweet_sentiments(tweets=None, batch_size=100, use_parallel=True,
 
 def get_user_sentiment_stats(user, use_parallel=True,
                            n_workers=None, threads_per_worker=2, memory_limit='2GB'):
-    
     tweets = user.tweets.all()
-    
-    # If the user is new to the platform
-    if not tweets:
-        return {
-            'positive_count': 0,
-            'negative_count': 0,
-            'neutral_count': 0,
-            'total_count': 0,
-            'positive_percent': 0,
-            'negative_percent': 0,
-            'neutral_percent': 0,
-            'average_score': 0.0,
-            
-            'chart_data': {
-                'labels': ['Positive', 'Neutral', 'Negative'],
-                'datasets': [{
-                    'data': [0, 0, 0],
-                    'backgroundColor': ['#28a745', '#6c757d', '#dc3545']
-                }]
-            }
-        }
-        
-    # Filter tweets that don't have sentiment data
-    tweets_without_sentiment = [tweet for tweet in tweets 
-                              if tweet.sentiment_score is None or tweet.sentiment_label is None]
-    
-    if tweets_without_sentiment:
-        logger.info(f"Analyzing sentiment for {len(tweets_without_sentiment)} tweets without sentiment")
-        update_tweet_sentiments(
-            tweets=tweets_without_sentiment,
-            use_parallel=use_parallel,
-            n_workers=n_workers,
-            threads_per_worker=threads_per_worker,
-            memory_limit=memory_limit
-        )
     
     positive_count = sum(1 for tweet in tweets if tweet.sentiment_label == 'positive')
     negative_count = sum(1 for tweet in tweets if tweet.sentiment_label == 'negative')
     neutral_count = sum(1 for tweet in tweets if tweet.sentiment_label == 'neutral')
     total_count = len(tweets)
     
-    positive_percent = round((positive_count / total_count) * 100, 1)
-    negative_percent = round((negative_count / total_count) * 100, 1)
-    neutral_percent = round((neutral_count / total_count) * 100, 1)
+    positive_percent = (positive_count / total_count * 100) if total_count > 0 else 0
+    negative_percent = (negative_count / total_count * 100) if total_count > 0 else 0
+    neutral_percent = (neutral_count / total_count * 100) if total_count > 0 else 0
     
     average_score = sum(tweet.sentiment_score for tweet in tweets) / total_count
     
@@ -222,7 +162,6 @@ def get_user_sentiment_stats(user, use_parallel=True,
 
 def analyze_tweet_sentiment_trends(timeframe='weekly', use_parallel=True,
                                 n_workers=None, threads_per_worker=2, memory_limit='2GB'):
-    
     logger.info(f"Analyzing tweet sentiment trends with timeframe={timeframe}...")
     start_time = time.time()
     
@@ -247,14 +186,12 @@ def analyze_tweet_sentiment_trends(timeframe='weekly', use_parallel=True,
                 'average_score': []
             }
         
-        # Creating DataFrame with tweet data
         df = pd.DataFrame([{
             'timestamp': tweet.timestamp,
             'sentiment_score': tweet.sentiment_score,
             'sentiment_label': tweet.sentiment_label
         } for tweet in tweets])
         
-        # Converting to Dask DataFrame
         dask_df = dd.from_pandas(df, npartitions=min(len(df) // 100 + 1, 20))
         
         if timeframe == 'daily':
@@ -268,7 +205,6 @@ def analyze_tweet_sentiment_trends(timeframe='weekly', use_parallel=True,
         def process_date_groups(df):
             result = []
             for date, group in df.groupby('date'):
-                # Count tweets by sentiment
                 sentiment_counts = group['sentiment_label'].value_counts()
                 avg_score = group['sentiment_score'].mean()
                 
@@ -287,7 +223,6 @@ def analyze_tweet_sentiment_trends(timeframe='weekly', use_parallel=True,
         
         computed_results = client.compute(date_group_tasks)
         
-        # Flatten and combine results
         date_groups = []
         for result in computed_results:
             date_groups.extend(result)
@@ -309,7 +244,6 @@ def analyze_tweet_sentiment_trends(timeframe='weekly', use_parallel=True,
         pass
 
 def _analyze_trends_sequential(timeframe):
-    
     from sqlalchemy import func, case
     
     if timeframe == 'daily':

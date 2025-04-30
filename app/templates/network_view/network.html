@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">User Network Clusters</h1>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Network Visualization</h5>
+                    <img src="{{ url_for('static', filename=network_path) }}" 
+                         class="img-fluid" 
+                         alt="User Network">
+                    <p class="mt-3">
+                        This network visualization shows how users are connected based on their tweet content similarity.
+                        Nodes represent users, and edges represent content similarity between users.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Cluster Visualization</h5>
+                    <img src="{{ url_for('static', filename=cluster_path) }}" 
+                         class="img-fluid" 
+                         alt="User Clusters">
+                    <p class="mt-3">
+                        This visualization shows how users are grouped into clusters based on their tweet content.
+                        Users in the same cluster tend to have similar tweeting patterns.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">About These Visualizations</h5>
+                    <p class="card-text">
+                        These visualizations provide two different views of how users are related:
+                    </p>
+                    <ul>
+                        <li><strong>Network View:</strong> Shows direct connections between users based on content similarity</li>
+                        <li><strong>Cluster View:</strong> Shows how users are grouped into distinct clusters</li>
+                    </ul>
+                    <p class="card-text">
+                        <strong>How to interpret:</strong>
+                        <ul>
+                            <li>Nodes represent users</li>
+                            <li>Edges represent content similarity</li>
+                            <li>Colors represent different clusters</li>
+                            <li>Closer nodes are more similar</li>
+                        </ul>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

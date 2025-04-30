@@ -41,7 +41,6 @@ def profile(username):
     following_count = user.followed.count()
     is_following = current_user.is_following(user) if current_user.is_authenticated else False
     
-    # Get sentiment statistics for visualization
     sentiment_stats = get_user_sentiment_stats(user)
     
     return render_template('profile/user.html',

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Simple User Clusters</h1>
+    
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Cluster Visualization</h5>
+                    <img src="{{ url_for('static', filename=plot_path) }}" 
+                         class="img-fluid" 
+                         alt="User Clusters">
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Cluster Information</h5>
+                    <p class="card-text">Total Users: {{ total_users }}</p>
+                    
+                    {% for cluster in cluster_info %}
+                    <div class="mb-3">
+                        <h6>Cluster {{ cluster.id + 1 }}</h6>
+                        <p>Size: {{ cluster.size }} users</p>
+                        <p>Sample Users:</p>
+                        <ul>
+                            {% for user in cluster.users %}
+                            <li>{{ user }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">About This Visualization</h5>
+                    <p class="card-text">
+                        This visualization shows how users are grouped based on their tweet content.
+                        Users in the same cluster tend to have similar tweeting patterns.
+                    </p>
+                    <ul>
+                        <li>Each point represents a user</li>
+                        <li>Points closer together are more similar</li>
+                        <li>Different colors represent different clusters</li>
+                        <li>Only showing top 100 users for clarity</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

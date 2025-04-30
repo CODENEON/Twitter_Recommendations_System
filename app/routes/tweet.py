@@ -20,33 +20,25 @@ class TweetForm(FlaskForm):
 def create():
     form = TweetForm()
     if form.validate_on_submit():
-        # Create the tweet
         tweet_text = form.content.data
         new_tweet = Tweet(text=tweet_text, user_id=current_user.id)
         
-        # Analyze sentiment
         sentiment_score, sentiment_label = analyze_sentiment(tweet_text)
         new_tweet.sentiment_score = sentiment_score
         new_tweet.sentiment_label = sentiment_label
         
-        # Extract hashtags
         hashtags = extract_hashtags(tweet_text)
         
-        # Add the tweet to the database
         db.session.add(new_tweet)
         db.session.commit()
         
-        # Process and add hashtags
         for tag_text in hashtags:
-            # Check if hashtag already exists in the database
             hashtag = Hashtag.query.filter_by(text=tag_text.lower()).first()
             if not hashtag:
-                # Create new hashtag if it doesn't exist
                 hashtag = Hashtag(text=tag_text.lower())
                 db.session.add(hashtag)
                 db.session.commit()
             
-            # Add hashtag to the tweet
             new_tweet.add_hashtag(hashtag)
         
         db.session.commit()
@@ -61,7 +53,6 @@ def create():
 def delete(tweet_id):
     tweet = Tweet.query.get_or_404(tweet_id)
     
-    # Check if the current user is the author of the tweet
     if tweet.user_id != current_user.id:
         flash('You can only delete your own tweets!', 'danger')
         return redirect(url_for('dashboard.index'))
@@ -73,13 +64,10 @@ def delete(tweet_id):
     return redirect(url_for('dashboard.index'))
 
 def get_related_hashtags(hashtag_text, limit=5):
-    """Get related hashtags based on co-occurrence in tweets."""
-    # Get all tweets that contain the given hashtag
     hashtag = Hashtag.query.filter_by(text=hashtag_text.lower()).first()
     if not hashtag:
         return []
     
-    # Get all other hashtags that appear in the same tweets
     related_hashtags = db.session.query(
         Hashtag.text,
         db.func.count(Hashtag.id).label('count')
@@ -99,13 +87,10 @@ def get_related_hashtags(hashtag_text, limit=5):
 @tweet.route('/hashtag/<tag_text>')
 @login_required
 def hashtag(tag_text):
-    # Find the hashtag in the database
     hashtag = Hashtag.query.filter_by(text=tag_text.lower()).first_or_404()
     
-    # Get all tweets with this hashtag
     tweets = hashtag.tweets.order_by(Tweet.timestamp.desc()).all()
     
-    # Get related hashtags
     related_hashtags = get_related_hashtags(tag_text)
     
     return render_template('tweets/hashtag.html', 
@@ -114,10 +99,7 @@ def hashtag(tag_text):
                           tweets=tweets,
                           related_hashtags=related_hashtags)
 
-# Utility function to extract hashtags from tweet text
 def extract_hashtags(text):
-    """Extract hashtags from tweet text."""
-    # Find all words starting with # and containing word characters
     hashtag_pattern = r'#(\w+)'
     hashtags = re.findall(hashtag_pattern, text)
     return hashtags
@@ -125,7 +107,6 @@ def extract_hashtags(text):
 @tweet.route('/api/tweets', methods=['POST'])
 @login_required
 def api_create_tweet():
-    """API endpoint for creating tweets via AJAX."""
     if not request.is_json:
         return jsonify({'error': 'Request must be JSON'}), 400
     
@@ -137,37 +118,28 @@ def api_create_tweet():
     if len(tweet_text) > 280:
         return jsonify({'error': 'Tweet must be 280 characters or less'}), 400
     
-    # Create the tweet
     new_tweet = Tweet(text=tweet_text, user_id=current_user.id)
     
-    # Analyze sentiment
     sentiment_score, sentiment_label = analyze_sentiment(tweet_text)
     new_tweet.sentiment_score = sentiment_score
     new_tweet.sentiment_label = sentiment_label
     
-    # Extract hashtags
     hashtags = extract_hashtags(tweet_text)
     
-    # Add the tweet to the database
     db.session.add(new_tweet)
     db.session.commit()
     
-    # Process and add hashtags
     for tag_text in hashtags:
-        # Check if hashtag already exists in the database
         hashtag = Hashtag.query.filter_by(text=tag_text.lower()).first()
         if not hashtag:
-            # Create new hashtag if it doesn't exist
             hashtag = Hashtag(text=tag_text.lower())
             db.session.add(hashtag)
             db.session.commit()
         
-        # Add hashtag to the tweet
         new_tweet.add_hashtag(hashtag)
     
     db.session.commit()
     
-    # Return the newly created tweet info
     return jsonify({
         'id': new_tweet.id,
         'text': new_tweet.text,
@@ -179,6 +151,5 @@ def api_create_tweet():
 @tweet.route('/api/related_hashtags/<tag_text>')
 @login_required
 def api_related_hashtags(tag_text):
-    """API endpoint for getting related hashtags."""
     related_hashtags = get_related_hashtags(tag_text)
     return jsonify(related_hashtags)
